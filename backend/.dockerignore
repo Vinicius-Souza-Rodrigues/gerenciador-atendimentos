@@ -1,0 +1,9 @@
+target/
+!.mvn/wrapper/maven-wrapper.properties
+.git
+.gitignore
+.idea
+*.iml
+*.md
+.env
+.env.*

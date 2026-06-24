@@ -1,0 +1,70 @@
+# Topologia de redes isoladas (ver ARCHITECTURE.md / BRIEFING):
+#   backend-net : backend + db        (frontend NÃO entra -> não enxerga o banco)
+#   frontend-net: backend + frontend
+# O backend é o único serviço nas duas redes (a ponte). O db só fala pela backend-net.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - backend-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Sem `ports:` -> NÃO publicado no host (em produção). Para inspecionar em dev,
+    # descomente abaixo (expõe só na sua máquina):
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+
+  backend:
+    build: ./backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
+      JWT_SECRET: ${JWT_SECRET}
+      TZ: ${TZ}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend-net
+      - frontend-net
+    # Publicado para conveniência em DEV (chamadas diretas do navegador à API).
+    # Em produção, o frontend alcança o backend pela frontend-net (http://backend:8080)
+    # e esta publicação pode ser removida.
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend
+    environment:
+      # Usado em chamadas server-side do Next via frontend-net (não vaza para o navegador).
+      BACKEND_INTERNAL_URL: http://backend:8080
+      TZ: ${TZ}
+    depends_on:
+      - backend
+    networks:
+      - frontend-net
+    ports:
+      - "3000:3000"
+
+networks:
+  backend-net:
+    driver: bridge
+  frontend-net:
+    driver: bridge
+
+volumes:
+  db-data:

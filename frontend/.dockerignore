@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.gitignore
+.idea
+*.md
+npm-debug.log*
+.env
+.env.*
