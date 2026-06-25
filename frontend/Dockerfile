@@ -4,14 +4,15 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+# npm install enquanto não há package-lock.json commitado.
+# Quando o lock file existir, trocar para: RUN npm ci
+RUN npm install
 
 # ---- Build stage: compila o Next.js ----
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Requer `output: 'standalone'` no next.config (a ser criado no esqueleto do frontend).
 RUN npm run build
 
 # ---- Runtime stage: imagem enxuta com o standalone ----
