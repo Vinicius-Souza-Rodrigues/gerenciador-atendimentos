@@ -1,12 +1,22 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-gray-900">
-          Gerenciador de Atendimentos
-        </h1>
-        <p className="mt-2 text-gray-500">Plataforma de agendamento por bot</p>
-      </div>
+    <main
+      style={{
+        fontFamily: "system-ui, sans-serif",
+        maxWidth: 640,
+        margin: "4rem auto",
+        padding: "0 1rem",
+        lineHeight: 1.6,
+      }}
+    >
+      <h1>Agendamentos</h1>
+      <p>Plataforma de agendamento por bot de Telegram — área do dono da conta.</p>
+      <p style={{ display: "flex", gap: 12 }}>
+        <Link href="/login">Entrar</Link>
+        <Link href="/signup">Criar conta</Link>
+      </p>
     </main>
-  )
+  );
 }

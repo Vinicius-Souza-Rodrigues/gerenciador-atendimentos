@@ -1,8 +1,8 @@
-# PRD — Plataforma de Agendamento por Bot (gerenciador-atendimentos)
+# PRD — Plataforma de Agendamento por Bot (Telegram)
 
-**Data:** 2026-06-24
+**Data:** 2026-06-25
 **Versão:** 1.0
-**Fonte:** `BRIEFING-projeto-agendamento-bot.md`
+**Fonte:** `BRIEFING-projeto-agendamento-bot.md` (calibração + PRD já respondidos)
 
 ---
 
@@ -12,8 +12,8 @@ Pessoas e estabelecimentos que marcam horário (consultas, serviços, atendiment
 gerenciam isso na mão — DM, telefone, papel. Resultado: esquecimento, conflito de
 horário e nenhuma visão consolidada da agenda.
 
-A plataforma automatiza o agendamento via **bot de Telegram** e centraliza a visão
-numa **área web** própria de cada conta.
+A plataforma automatiza o agendamento via **bot de Telegram** (para o cliente final)
+e centraliza a visão numa **área web** (para o dono da conta).
 
 ---
 
@@ -23,12 +23,12 @@ numa **área web** própria de cada conta.
 - [x] Outras pessoas
 - [ ] API pública / terceiros
 
-Dois atores:
+São **dois atores**:
 
 | Ator | Quem é | Como interage |
 |---|---|---|
-| **Dono da conta** | Pessoa comum ou estabelecimento (é o *tenant*) | Área web: serviços, calendário, link do bot, cadastro manual |
-| **Cliente final** | Quem quer marcar horário | Bot de Telegram, pelo deep link que o dono compartilha |
+| **Dono da conta** | Pessoa comum ou estabelecimento (é o *tenant*) | Área **web**: serviços, calendário, link do bot, cadastro manual. Vê só a própria conta. |
+| **Cliente final** | Quem quer marcar horário | **Bot de Telegram**, via deep link que o dono compartilha. |
 
 ---
 
@@ -36,58 +36,72 @@ Dois atores:
 
 O ciclo **conta → bot → agendamento → visão na web** funcionando ponta a ponta:
 
-1. Criar uma **conta** e fazer **login** na área web.
-2. **Cadastrar um serviço** (nome + duração).
-3. A plataforma fornece um **link do bot** do Telegram (deep link por conta).
-4. No bot, o cliente **vê os serviços** e pede os **dias disponíveis** (recebe um calendário).
-5. O cliente **escolhe um serviço e marca um horário** por conversa; o bot **confirma na hora**.
-6. O dono abre a **área web** e vê esse agendamento no **calendário**.
+1. Crio uma **conta** e faço **login**.
+2. Cadastro um **serviço** (nome + duração) na área web.
+3. A plataforma me dá um **link de bot** do Telegram (deep link por conta).
+4. Abro o bot, **vejo os serviços** e peço os **dias disponíveis** (recebo um **calendário**).
+5. **Escolho um serviço e marco um horário** pela conversa; o bot **confirma na hora**.
+6. Abro minha **área web** e vejo esse agendamento no **calendário**.
 
-Inclui ainda: cancelar/remarcar pelo bot, cadastro manual de cliente na web, e o dono
-poder recusar/cancelar um agendamento pela web.
+Funcionalidades do núcleo:
+
+1. Criar conta + login (self-service; cada dono só vê a própria conta).
+2. Provisionar o bot — deep link por conta (`t.me/SeuBot?start=<token>`).
+3. Área web — gerenciar serviços (nome, duração, descrição, preço opcional).
+4. Bot — listar serviços da conta.
+5. Bot — consultar disponibilidade (responde com calendário no Telegram).
+6. Bot — agendar por conversa (serviço + horário → valida → confirma automático).
+7. Bot — cancelar / remarcar pelo próprio bot.
+8. Área web — calendário de agendamentos (dias com marcações e quantidade por dia).
+9. Área web — link do bot (copiar para compartilhar).
+10. Área web — cadastro manual de cliente (telefone + serviço desejado).
 
 ---
 
 ## Fora do escopo (agora)
 
-- **WhatsApp** e outras plataformas além do Telegram (evolução futura via Evolution API).
-- **Dashboard de faturamento** (somatório, relatórios de serviços pagos) — pós-MVP, domínio financeiro BR.
-- **Lembrete automático** (ex.: 1h antes da consulta).
-- **Vários profissionais por conta** (agendas separadas dentro de um estabelecimento) — MVP é **uma agenda por conta**.
-- **Espaço de opções extras** configuráveis por conta.
-- **Cobrança/pagamento**: o serviço tem preço **opcional**, mas é só cadastro — sem cobrança no MVP.
+- **WhatsApp** e outras plataformas além do Telegram (Evolution API fica como evolução).
+- **Dashboard de faturamento** / cobrança (preço é só campo cadastrado, sem cobrança).
+- **Lembrete automático** 1h antes do horário.
+- **Vários profissionais por conta** (uma agenda por conta no MVP).
+- **Opções extras configuráveis** por conta.
+- **Modelo B do bot** (cada conta cria o próprio bot no BotFather).
 
 ---
 
 ## Restrições conhecidas
 
-- **Backend Hexagonal (Ports & Adapters)** — núcleo de domínio isolado; bot, web e banco são adapters.
+- **Arquitetura Hexagonal** (Ports & Adapters) — núcleo de domínio isolado; bot, web e
+  banco são adapters.
 - **TDD** — domínio testável sem tocar Telegram/banco/HTTP.
-- **Stack (alto nível, fixa no briefing):** Java + Spring Boot + JUnit / Next.js / PostgreSQL.
-  *(Sub-decisões — build tool, persistência, migrations, lib do Telegram, auth, polling×webhook — a confirmar no Stack Grill.)*
-- **Multi-tenant por coluna `conta_id`** em todas as tabelas (um banco só).
-- **Docker com redes isoladas**: `frontend-net` (frontend↔backend) e `backend-net` (backend↔db) separadas; db não exposto ao host em produção.
-- **`.dockerignore`** por serviço, multi-stage build, healthcheck no db, volume nomeado, `.env` para segredos.
-- **CI/CD**: testes rodam no pipeline antes do build das imagens.
-- **Modelo do bot: A** — 1 bot da plataforma + deep link por conta (`t.me/SeuBot?start=<token>`).
+- **Docker com redes isoladas**: `frontend-net` (frontend ↔ backend) e `backend-net`
+  (backend ↔ db) separadas; o frontend não enxerga o banco. `.dockerignore` por serviço.
+- **CI/CD com workflows** — testes rodam no pipeline antes do build das imagens.
+- **Multi-tenant por coluna** `conta_id` em todas as tabelas (um banco só).
+- **Stack decidida:** Java + Spring Boot + JUnit / Next.js / PostgreSQL.
+- **Telegram (MVP):** Bot API via **long polling** (sem URL pública/proxy).
+- **Auth web:** Spring Security + **JWT** (stateless).
+- **Build backend:** Maven.
 
-## Dependências Externas
+### Dependências Externas
 
-- **Telegram Bot API** (MVP) — dependência externa principal. O contrato (o que envia, o que
-  recebe, comportamento em falha) será documentado no SDD.
-  - O que controlo: 1 token de bot da plataforma, a lógica de roteamento por deep link.
-  - O que vem de fora: updates de mensagens/callbacks, entrega das respostas.
-- **WhatsApp Business / Evolution API** — futuro, fora do MVP.
+| Sistema | Papel | O que controlo | O que vem dele |
+|---|---|---|---|
+| **Telegram Bot API** | Canal do cliente final (MVP) | Token do bot da plataforma; lógica de conversa | Updates (mensagens, callbacks de calendário), identidade do usuário (telegram_user_id, nome/username) |
+| WhatsApp / Evolution API | Canal futuro (pós-MVP) | — | — |
+
+> Identidade do cliente pelo bot = conta do Telegram (nome/username). O bot **não pede
+> telefone**; telefone só aparece no cadastro manual da web.
 
 ---
 
 ## Critério de sucesso
 
-Consigo, sem ler código:
+O MVP "já funciona" quando, observando o comportamento, eu consigo:
 
-- Criar conta + login na web.
-- Cadastrar um serviço e vê-lo na lista.
-- Copiar o link do bot, abri-lo no Telegram, ver os serviços e pedir os dias disponíveis (calendário).
-- Escolher serviço + horário pela conversa e receber a confirmação do bot.
-- Ver esse agendamento no calendário da área web.
-- Cancelar/remarcar pelo bot e ver o reflexo na web.
+- Criar uma conta e fazer login.
+- Cadastrar um serviço (nome + duração) na área web.
+- Receber um link de bot do Telegram.
+- Abrir o bot, ver os serviços e pedir os dias disponíveis (receber um calendário).
+- Escolher um serviço e marcar um horário pela conversa, e o bot confirmar.
+- Abrir a área web e ver esse agendamento no calendário.

@@ -1,40 +1,67 @@
-# DECISIONS — gerenciador-atendimentos
+# DECISIONS — Change Log de Decisões
 
-> Registro de decisões estruturais. Não é changelog de código — é registro de intenção.
-> Novas entradas sempre no topo.
+Toda mudança estrutural gera uma entrada aqui (e atualiza o `ARCHITECTURE.md` no mesmo gatilho).
 
 ---
 
-## Entradas
+## 2026-06-25 — Stack e metodologia (fechamento do ADR)
 
-### 2026-06-24 — CI/CD mantido (GitHub Actions) + escopo da restrição de git
+**O que mudou:** definida a stack e a metodologia do projeto.
+- Backend: Java 21 + Spring Boot 3.x (Maven), JUnit 5 + Mockito + AssertJ.
+- Persistência: Spring Data JPA + PostgreSQL, migrações Flyway.
+- Bot: TelegramBots (rubenlagus) em modo long polling.
+- Auth web: Spring Security + JWT (stateless).
+- Frontend: Next.js (App Router) + TypeScript.
+- Orquestração: Docker Compose com redes isoladas; CI no GitHub Actions.
+- Metodologia: Híbrido TDD+SDD (DDD-lite na linguagem), camada dominante TDD.
 
-**O que mudou:** Confirmado que o projeto terá **CI/CD com GitHub Actions** (`.github/workflows/ci.yml`), ancorado na **Fase 1** do ROADMAP (rodar testes do backend antes do build das imagens). Também criados os arquivos Docker (compose, Dockerfiles, .dockerignore, .env.example) antecipadamente.
-**Por que:** O usuário esclareceu que a restrição "não usar GitHub" é, na verdade, **apenas o agente não executar `git add`/`commit`/`push`** — ele versiona manualmente. GitHub como plataforma e CI/CD são permitidos, então o requisito de CI/CD do briefing some sem conflito.
-**Alternativa descartada:** Verificação só local sem CI remoto; CI em ferramenta não-GitHub; remover CI/CD do MVP.
-**Impacto:** O agente pode criar/editar workflows, mas nunca dá push (isso é do usuário). O comentário "testes rodam no CI" no `backend/Dockerfile` fica válido.
-**Como reverter:** Remover `.github/workflows/` e a tarefa de CI da Fase 1.
+**Por que:** briefing exige Hexagonal + TDD; stack escolhida é o caminho de menor atrito
+para esse estilo e para o histórico do usuário. TDD lidera porque a dor maior está na lógica
+de agendamento e na integração frágil com o Telegram.
 
-### 2026-06-24 — Bootstrap recomeçado do zero nesta pasta
+**Alternativa descartada:** Node/NestJS, Gradle, webhook do Telegram, sessão por cookie,
+MySQL/SQLite, React SPA/Remix, Modelo B do bot (token por conta). Detalhe no ADR.
 
-**O que mudou:** Geração do conjunto de documentos de bootstrap (PRD, CONTEXT, ADR, ARCHITECTURE, SDD, ROADMAP, DECISIONS) a partir do `BRIEFING-projeto-agendamento-bot.md`.
-**Por que:** A pasta `d:\ClaudeCodeReferencias\gerenciador-atendimentos` só continha o BRIEFING e nenhum commit, embora houvesse registro de um bootstrap anterior (2026-06-20) feito em outro lugar/perdido. O usuário optou por recomeçar do zero aqui.
-**Alternativa descartada:** Procurar/reaproveitar os docs antigos em outra pasta do disco.
-**Impacto:** Toda decisão de domínio/stack passa a viver nestes `.md`; o BRIEFING segue como fonte de intenção original.
-**Como reverter:** Apagar os `.md` gerados; o BRIEFING permanece intacto.
+**Impacto:** define estrutura de pacotes Hexagonal, build Maven, schema multi-tenant por
+`conta_id`, e os gates de fitness function.
 
-### 2026-06-24 — Stack definida por consenso (Stack Grill)
+**Como reverter:** trocar a tecnologia da camada afetada no ADR + ARCHITECTURE e regenerar
+o esqueleto correspondente (nenhum código de produção ainda escrito).
 
-**O que mudou:** Fixadas as sub-decisões de stack: **Maven, Java 21, Spring Data JPA/Hibernate, Flyway, TelegramBots (rubenlagus)+starter com long polling, Spring Security + JWT stateless (BCrypt), Next.js App Router + TS + Tailwind**. Detalhes e alternativas no ADR.
-**Por que:** O briefing fixava só o alto nível (Java/Spring/JUnit/Next/Postgres); o usuário pediu explicitar e confirmar as sub-decisões em vez de assumir em silêncio.
-**Alternativa descartada:** Gradle, Java 17, Spring Data JDBC, jOOQ, Liquibase, WebClient cru, webhook, sessão server-side, Pages Router, shadcn/ui no MVP (ver tabela "Decisões Descartadas" do ADR).
-**Impacto:** Define dependências do `pom.xml`, do `package.json` e o desenho dos adapters.
-**Como reverter:** Reabrir o Stack Grill para a camada específica e atualizar ADR + ARCHITECTURE + DECISIONS.
+---
 
-### 2026-06-24 — Regras de domínio: slots, fuso, remarcar, sobreposição
+## 2026-06-26 — telegrambots adiado para a Fase 4
 
-**O que mudou:** (1) Horários por **grade fixa** de slots (`granularidade_min`, 30 no MVP), com a **duração vinda do serviço** (variável) ocupando N fatias; (2) fuso **fixo America/Sao_Paulo** (persistir UTC); (3) **remarcar = update do mesmo registro**; (4) sobreposição: só **CONFIRMADO** bloqueia, intervalo **`[inicio, fim)`** meio-aberto.
-**Por que:** Pontos ambíguos no briefing que viram código (lógica de disponibilidade, modelagem do agendamento). Resolvidos no Domain Grill; o usuário reforçou que a duração é por serviço (variável), confirmando que a grade governa só o início.
-**Alternativa descartada:** Encaixe de início pela duração do serviço; fuso por conta; remarcar como cancelar+criar; fim inclusivo / CONCLUIDO bloqueando.
-**Impacto:** Define o cálculo de disponibilidade, o schema (`conta.granularidade_min`, sem campo de fuso) e a operação de remarcar.
-**Como reverter:** Atualizar CONTEXT.md + SDD e ajustar os use cases de disponibilidade/remarcação.
+**O que mudou:** removida a dependência `org.telegram:telegrambots:6.9.7.1` do `pom.xml` na
+Fase 1.
+
+**Por que:** a versão 6.x é pré-Jakarta e arrasta JAXB legado (`javax.xml.bind`), que quebra
+a subida do contexto no Spring Boot 3 (`ClassNotFoundException: javax.xml.bind.annotation.XmlElement`).
+
+**Alternativa descartada:** forçar `jaxb-api`/`jakarta.xml.bind` legado no classpath — gambiarra
+que mascara a incompatibilidade.
+
+**Impacto:** o adapter do bot (Fase 4) usará a linha 7.x (`telegrambots-longpolling` /
+`telegrambots-client`), já Jakarta-compatível. Nenhuma regra de domínio afetada.
+
+**Como reverter:** readicionar a dependência na versão correta ao iniciar a Fase 4.
+
+---
+
+## 2026-06-25 — Regras de domínio resolvidas no grill
+
+**O que mudou:** fechadas 3 ambiguidades do domínio.
+- Slot: encadeado pela duração do serviço a partir do início da janela.
+- Disponibilidade: bot mostra só slots livres (futuros + sem overlap com CONFIRMADOS).
+- Remarcar: move o mesmo registro (atualiza início/fim, mantém CONFIRMADO).
+- Calendário do bot: horizonte de 30 dias.
+
+**Por que:** evitar que o agente interprete esses termos sozinho no SDD.
+
+**Alternativa descartada:** grade fixa de horários; remarcar como cancelar+criar; janelas de
+7/60 dias.
+
+**Impacto:** define o cálculo de disponibilidade e o comportamento do bot. Registrado no
+`CONTEXT.md`.
+
+**Como reverter:** reabrir o item no CONTEXT.md e ajustar o serviço de disponibilidade.

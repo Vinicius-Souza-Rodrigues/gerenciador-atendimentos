@@ -1,7 +1,8 @@
-# ROADMAP — gerenciador-atendimentos
+# ROADMAP — Plataforma de Agendamento por Bot (Telegram)
 
-**Data:** 2026-06-24
-**Total de fases:** 7
+**Data:** 2026-06-25
+**Total de fases:** 6
+**Baseado em:** PRD v1.0, ADR v1.0, SDD, CONTEXT
 
 ---
 
@@ -9,109 +10,128 @@
 
 - **Critério de conclusão** = comportamento observável, não tarefa técnica.
 - **Dependência** = qual fase precisa estar concluída antes.
-- **Gate de arquitetura** = toda fase termina com a Revisão de Arquitetura registrada em `ARCH-REVIEWS.md` antes de abrir a próxima.
-- **[HITL]** = você valida pelo comportamento antes de avançar. **[AFK]** = o agente fecha sozinho.
-- Regra: tarefa que muda contrato de módulo ou afeta vários módulos → **[HITL]**.
-
-O **MVP Gate** do PRD é atingido ao final da **Fase 6**. A Fase 7 completa o conjunto de features do MVP (cancelar/remarcar pelo bot).
+- **Gate de arquitetura** = toda fase termina com a Revisão de Arquitetura registrada em
+  `ARCH-REVIEWS.md` antes de abrir a próxima.
+- **[AFK]** = o agente fecha sozinho. **[HITL]** = exige sua validação por comportamento
+  (Validation Checklist obrigatória). Regra: muda contrato de módulo / afeta vários módulos → HITL.
+- **Uma tarefa por vez.** Qualquer incerteza de lógica → o agente PARA e pergunta.
 
 ---
 
 ## Fases
 
-### Fase 1 — Esqueleto ponta a ponta
-**Objetivo:** ter o sistema rodando vazio, com os containers e redes isoladas de pé.
-**Critério de conclusão:**
-> Subo `docker-compose up`, acesso o frontend Next.js, o backend responde em `/health`, o backend conecta no Postgres (Flyway roda a migração inicial) e o frontend **não** enxerga o banco.
-**Tarefas para o agente:**
-1. [AFK] Esqueleto Maven (backend) com pacotes Hexagonal vazios + endpoint `/health`.
-2. [AFK] Esqueleto Next.js (App Router + TS + Tailwind, `output: 'standalone'`) com uma página simples.
-3. [AFK] Migração Flyway inicial (extensão/baseline) + `application.yml` (datasource via variáveis do compose).
-4. [AFK] Workflow de CI (GitHub Actions, `.github/workflows/ci.yml`): roda os testes do backend antes do build das imagens. (O agente cria o arquivo; o `git push` é responsabilidade do usuário.)
-5. [HITL] Validar a subida ponta a ponta com `docker-compose up`.
+### Fase 1 — Fundação (esqueleto + Docker + CI)
 
-> **Já criados nesta sessão** (antecipados, fora do fluxo de fase): `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`, `.dockerignore` de cada e `.env.example`. Falta o esqueleto de código que eles compilam.
+**Objetivo:** ter o ambiente de pé e o pipeline rodando, sem regra de negócio ainda.
+
+**Critério de conclusão:**
+> Eu rodo `docker compose up` e os containers sobem; o backend responde em `/health`; o
+> frontend abre uma página inicial; e o push dispara o CI que roda os testes (mesmo vazios).
+
+**Tarefas para o agente:**
+1. [AFK] Esqueleto de pastas backend (Hexagonal) + frontend (Next.js) conforme SDD.
+2. [AFK] `pom.xml` (Spring Boot, JPA, Security, Flyway, TelegramBots, JUnit/Mockito/AssertJ).
+3. [HITL] `docker-compose.yml` com `frontend-net` e `backend-net` isoladas, `db` sem porta no host, healthcheck no db + `depends_on: service_healthy`.
+4. [AFK] `.dockerignore` por serviço, `.env.example`, multi-stage `Dockerfile`s.
+5. [AFK] `HealthController` (`/health`) + página inicial Next.js.
+6. [HITL] `.github/workflows/ci.yml` rodando `mvn test` antes do build das imagens.
 
 **Dependência:** nenhuma
-**Gate de arquitetura:** [ ] Revisão registrada em `ARCH-REVIEWS.md`
+**Gate de arquitetura:** [ ] Revisão registrada em `ARCH-REVIEWS.md` (checar isolamento de rede + fitness functions estruturais)
 
 ---
 
-### Fase 2 — Conta + login
-**Objetivo:** dono cria conta e autentica na web.
+### Fase 2 — Núcleo de agendamento (domínio puro, TDD)
+
+**Objetivo:** as regras invioláveis existem e estão testadas, sem tocar banco/Telegram/HTTP.
+
 **Critério de conclusão:**
-> Crio uma conta (nome/email/senha), faço login, recebo um JWT e acesso uma área logada; uma conta não vê dados de outra.
+> Rodo os testes de domínio e vejo verde cobrindo: geração de slot encadeado, slot só dentro
+> da janela, slot futuro, não-sobreposição de CONFIRMADOS, `fim = inicio + duração`, e
+> isolamento por `conta_id`.
+
 **Tarefas para o agente:**
-1. [HITL] Domínio `Conta` + geração de `bot_deep_link_token` (TDD).
-2. [HITL] Use cases CriarConta/Login (ports/in) + ports/out de repositório.
-3. [HITL] Adapter persistência (JPA + Flyway `conta`) + adapter web (Spring Security + JWT, BCrypt).
-4. [HITL] Tela de signup/login no frontend.
+1. [HITL] Entidades de domínio (`Conta`, `Servico`, `Cliente`, `HorarioAtendimento`, `Agendamento`) + enums em arquivos próprios (`StatusAgendamento`, `OrigemCliente`, `OrigemAgendamento`, `DiaSemana`).
+2. [HITL] `Slot` + `CalculadoraDisponibilidade` (encadeado pela duração, filtra livres, horizonte 30 dias, `Clock` injetável) — TDD primeiro.
+3. [HITL] Regra de não-sobreposição e validações (futuro, dentro da janela) com testes de borda.
+
 **Dependência:** Fase 1
-**Gate de arquitetura:** [ ] Revisão registrada em `ARCH-REVIEWS.md`
+**Gate de arquitetura:** [ ] Revisão registrada (domínio sem imports de infra; testes sem `@SpringBootTest`)
 
 ---
 
-### Fase 3 — Serviços + horários de atendimento
-**Objetivo:** dono cadastra o que oferece e quando atende.
+### Fase 3 — Conta, login e serviços (área web)
+
+**Objetivo:** o dono cria conta, loga e gerencia serviços e horários pela web.
+
 **Critério de conclusão:**
-> Logado, crio um serviço (nome + duração [+ descrição/preço opcional]) e defino janelas de atendimento; ambos aparecem listados e ficam isolados por conta.
+> Eu faço signup, login (recebo um JWT), cadastro um serviço (nome + duração) e ele aparece
+> na lista; defino meus horários de atendimento; e vejo o link do meu bot.
+
 **Tarefas para o agente:**
-1. [HITL] Domínio `Servico` e `HorarioAtendimento` (+ enum `DiaSemana`) com validações (TDD).
-2. [HITL] Use cases CriarServico/ListarServicos/DefinirHorario + persistência (Flyway).
-3. [HITL] Telas de serviços e horários no frontend.
+1. [HITL] Ports in/out + services: `CriarContaUseCase`, `AutenticarUseCase`, `GerenciarServicoUseCase`, `GerenciarHorarioUseCase`, `ResolverContaPorTokenUseCase`.
+2. [HITL] Adapter persistência (JPA entities + mappers Entity↔Domain) + migração Flyway `V1__baseline.sql`.
+3. [HITL] Adapter web: endpoints `/auth/*`, `/servicos`, `/horarios`, `/conta/bot-link` + Spring Security + JWT.
+4. [HITL] Telas Next.js: signup/login, lista/criar serviço, horários, link do bot.
+
 **Dependência:** Fase 2
-**Gate de arquitetura:** [ ] Revisão registrada em `ARCH-REVIEWS.md`
+**Gate de arquitetura:** [ ] Revisão registrada (inversão de dependência; DTOs não vazam domínio; `conta_id` em toda tabela)
 
 ---
 
-### Fase 4 — Bot: deep link, listar serviços e disponibilidade
-**Objetivo:** o cliente conversa com o bot da conta certa e vê o que está disponível.
+### Fase 4 — Bot de Telegram (agendar ponta a ponta)
+
+**Objetivo:** o cliente agenda pelo bot via deep link.
+
 **Critério de conclusão:**
-> Abro o bot pelo link da conta (`?start=<token>`), vejo os serviços ativos e peço os dias/horários disponíveis, recebendo um calendário no Telegram (grade de 30 min, só horários futuros).
+> Abro o bot pelo link `t.me/SeuBot?start=<token>`, vejo os serviços da conta, peço os dias
+> disponíveis (recebo um calendário), escolho serviço + horário e o bot confirma ("tudo
+> certo!"). Consigo cancelar e remarcar pelo próprio bot.
+
 **Tarefas para o agente:**
-1. [HITL] Domínio de **Disponibilidade/Slot** (grade − ocupados CONFIRMADO; serviço ocupa N fatias) — núcleo TDD.
-2. [HITL] Adapter Telegram (long polling) + resolução do deep link → conta.
-3. [HITL] Use cases ListarServicos (bot) e ConsultarDisponibilidade; teclados/calendário inline.
+1. [HITL] Adapter in/telegram (long polling): roteamento de `/start <token>`, comandos e `callback_query`.
+2. [HITL] Use cases do bot: `ListarServicosUseCase`, `ConsultarDisponibilidadeUseCase`, `AgendarUseCase`, `CancelarAgendamentoUseCase`, `RemarcarAgendamentoUseCase` (transação na invariante de overlap).
+3. [HITL] Adapter out/telegram (envio de mensagem + teclado de calendário inline) + criação automática de `Cliente` origem BOT.
+
 **Dependência:** Fase 3
-**Gate de arquitetura:** [ ] Revisão registrada em `ARCH-REVIEWS.md`
+**Gate de arquitetura:** [ ] Revisão registrada (adapter sem regra de negócio; falha de Telegram não derruba transação)
 
 ---
 
-### Fase 5 — Bot: agendar com auto-confirmação e regra de sobreposição
-**Objetivo:** o cliente fecha um agendamento e o bot confirma; o núcleo protege a agenda.
+### Fase 5 — Visão na web (calendário + cadastro manual)
+
+**Objetivo:** o dono enxerga e administra os agendamentos.
+
 **Critério de conclusão:**
-> Escolho um serviço e um horário pela conversa e o bot responde "tudo certo!"; uma tentativa que se sobrepõe a outro CONFIRMADO é recusada com mensagem clara.
+> Abro a área web e vejo no calendário o agendamento feito pelo bot (dias com quantidade de
+> marcações); abro um dia e vejo a lista; cancelo um agendamento; e cadastro um cliente
+> manualmente (telefone + serviço).
+
 **Tarefas para o agente:**
-1. [HITL] Domínio `Agendamento` (+ enums `StatusAgendamento`, `OrigemAgendamento`) e regra de sobreposição `[inicio, fim)` — TDD primeiro.
-2. [HITL] Use case AgendarConsulta (cria Cliente origem BOT se preciso) + idempotência de `callback_query`.
-3. [HITL] Fluxo de confirmação no bot.
+1. [HITL] Use cases `VerAgendaUseCase`, `CadastrarClienteManualUseCase` + endpoints `/agenda`, `/agendamentos`, `/clientes/manual`.
+2. [HITL] Tela de calendário web (dias + quantidade) e detalhe do dia com cancelar.
+3. [AFK] Tela de cadastro manual de cliente.
+
 **Dependência:** Fase 4
-**Gate de arquitetura:** [ ] Revisão registrada em `ARCH-REVIEWS.md`
+**Gate de arquitetura:** [ ] Revisão registrada (MVP Gate completo; sem drift de complexidade)
 
 ---
 
-### Fase 6 — Web: calendário, recusar/cancelar e cadastro manual  ← **MVP Gate**
-**Objetivo:** o dono enxerga e controla a agenda pela web.
+### Fase 6 — Endurecimento (CI/CD completo + isolamento verificado)
+
+**Objetivo:** deixar o ciclo confiável e reprodutível.
+
 **Critério de conclusão:**
-> Na área web vejo o calendário com a quantidade de agendamentos por dia e a lista do dia; consigo recusar/cancelar um agendamento; cadastro um cliente manualmente (telefone + serviço); e copio o link do bot. **(Fecha o ciclo conta → bot → agendamento → visão na web.)**
+> O pipeline roda todos os testes e builda as imagens; confirmo que o `frontend` não alcança
+> o `db` (rede isolada); e há um teste de fluxo cobrindo "agendou no bot → aparece na web".
+
 **Tarefas para o agente:**
-1. [HITL] Use case CalendárioDeAgendamentos (agregação por dia) + recusar/cancelar.
-2. [HITL] Use case CadastrarClienteManual (+ enum `OrigemCliente`).
-3. [HITL] Telas: calendário, detalhe do dia, cadastro manual, link do bot.
+1. [AFK] CI/CD: build das imagens após testes verdes; cache de dependências.
+2. [HITL] Teste de integração/e2e do fluxo ponta a ponta (bot → web).
+3. [AFK] Revisão de segredos (`.env` fora do git), README de execução.
+
 **Dependência:** Fase 5
-**Gate de arquitetura:** [ ] Revisão registrada em `ARCH-REVIEWS.md`
-
----
-
-### Fase 7 — Bot: cancelar e remarcar
-**Objetivo:** o cliente gerencia o próprio agendamento pelo bot.
-**Critério de conclusão:**
-> Pelo bot, cancelo um agendamento (o horário volta a ficar livre) e remarco para outro horário válido (mesmo registro, novas datas); o reflexo aparece no calendário da web.
-**Tarefas para o agente:**
-1. [HITL] Use cases Cancelar/Remarcar (remarcar = update do mesmo registro, revalidando regras).
-2. [HITL] Fluxo de cancelar/remarcar no bot.
-**Dependência:** Fase 6
-**Gate de arquitetura:** [ ] Revisão registrada em `ARCH-REVIEWS.md`
+**Gate de arquitetura:** [ ] Revisão final registrada (todas as fitness functions; candidatas a graduar para CI)
 
 ---
 
@@ -119,7 +139,8 @@ O **MVP Gate** do PRD é atingido ao final da **Fase 6**. A Fase 7 completa o co
 
 | Após a Fase | Pergunta de validação |
 |---|---|
-| 1 | O esqueleto sobe e as redes estão realmente isoladas? |
-| 3 | O dono consegue modelar o negócio dele (serviços + horários) sem ambiguidade? |
-| 6 | O MVP resolve o problema do PRD (ciclo ponta a ponta)? |
-| Final (7) | Eu usaria isso para gerenciar agendamentos de verdade? |
+| 1 | O ambiente sobe e o pipeline roda — a fundação está sólida? |
+| 3 | Consigo criar conta, logar e cadastrar serviço — o lado do dono entrega valor? |
+| 4 | O cliente consegue agendar pelo bot de ponta a ponta? |
+| 5 | O MVP resolve o problema do PRD (ciclo conta→bot→agendamento→web)? |
+| Final | Eu usaria isso no dia a dia? |

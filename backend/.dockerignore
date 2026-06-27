@@ -1,9 +1,11 @@
 target/
-!.mvn/wrapper/maven-wrapper.properties
-.git
+.git/
 .gitignore
-.idea
+.idea/
 *.iml
-*.md
 .env
 .env.*
+README.md
+HELP.md
+Dockerfile
+.dockerignore

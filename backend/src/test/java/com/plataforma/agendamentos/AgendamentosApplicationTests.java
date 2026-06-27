@@ -10,5 +10,6 @@ class AgendamentosApplicationTests {
 
     @Test
     void contextLoads() {
+        // Verifica que o contexto Spring sobe com as configurações da Fase 1.
     }
 }
